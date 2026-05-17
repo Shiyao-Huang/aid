@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}"
+if [ -z "$ROOT" ]; then
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+
+DATA="${PLUGIN_DATA:-${CLAUDE_PLUGIN_DATA:-}}"
+if [ -z "$DATA" ]; then
+  DATA="${AID_HOME:-$HOME/.aid}"
+fi
+
+if [ -n "${PLUGIN_ROOT:-}" ]; then
+  HARNESS="${AID_HARNESS:-codex}"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  HARNESS="${AID_HARNESS:-claude}"
+else
+  HARNESS="${AID_HARNESS:-unknown}"
+fi
+
+mkdir -p "$DATA"
+export PYTHONPATH="$ROOT:${PYTHONPATH:-}"
+export AID_HARNESS="$HARNESS"
+export AID_LEDGER="${AID_LEDGER:-$DATA/ledger.sqlite}"
+export AID_STRICT_MISSING_READ="${AID_STRICT_MISSING_READ:-1}"
+export AID_GITNEXUS="${AID_GITNEXUS:-1}"
+
+exec python3 -m aid.cli hook "${1:-}"

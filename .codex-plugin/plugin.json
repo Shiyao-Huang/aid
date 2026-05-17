@@ -1,0 +1,42 @@
+{
+  "name": "aid",
+  "version": "0.1.0",
+  "description": "Agent Identity Daemon: shared identity, intent, operation trace, evaluation, and adaptation memory for Codex, Claude Code, and mixed-agent workspaces.",
+  "author": {
+    "name": "AID"
+  },
+  "homepage": "https://github.com/Shiyao-Huang/aid",
+  "repository": "https://github.com/Shiyao-Huang/aid",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "identity",
+    "hooks",
+    "collaboration",
+    "ledger",
+    "codex",
+    "claude-code"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "AID",
+    "shortDescription": "Agent identity and operation-chain awareness",
+    "longDescription": "AID gives coding agents a shared local ledger for session identity, goals, reads, writes, conditions, outcomes, evaluations, and adaptation hints so Codex and Claude Code can notice each other's traces in mixed-agent work.",
+    "developerName": "AID",
+    "category": "Coding",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Show AID awareness for the file I am about to edit.",
+      "Use AID to check whether another agent recently touched this file."
+    ],
+    "websiteURL": "https://github.com/Shiyao-Huang/aid",
+    "privacyPolicyURL": "https://github.com/Shiyao-Huang/aid",
+    "termsOfServiceURL": "https://github.com/Shiyao-Huang/aid",
+    "brandColor": "#2563EB",
+    "screenshots": []
+  }
+}
