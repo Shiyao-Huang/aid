@@ -15,7 +15,38 @@ from typing import Any, Iterable
 
 
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch", "ApplyPatch"}
-READ_TOOLS = {"Read"}
+READ_TOOLS = {"Read", "Grep", "Glob", "LS"}
+
+DEFAULT_TOOL_MATCHER = (
+    "Task|Bash|Shell|exec_command|functions\\.exec_command|apply_patch|ApplyPatch|"
+    "Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob|LS|"
+    "WebFetch|WebSearch|TodoWrite|update_plan|spawn_agent|send_input|wait_agent|mcp__.*"
+)
+
+DEFAULT_TOOL_SPECS: dict[str, dict[str, Any]] = {
+    "Read": {"category": "filesystem.read", "impact": "high"},
+    "Grep": {"category": "filesystem.search", "impact": "medium"},
+    "Glob": {"category": "filesystem.search", "impact": "medium"},
+    "LS": {"category": "filesystem.list", "impact": "medium"},
+    "Write": {"category": "filesystem.write", "impact": "critical"},
+    "Edit": {"category": "filesystem.write", "impact": "critical"},
+    "MultiEdit": {"category": "filesystem.write", "impact": "critical"},
+    "NotebookEdit": {"category": "filesystem.write", "impact": "critical"},
+    "apply_patch": {"category": "filesystem.patch", "impact": "critical"},
+    "ApplyPatch": {"category": "filesystem.patch", "impact": "critical"},
+    "Bash": {"category": "shell", "impact": "critical"},
+    "Shell": {"category": "shell", "impact": "critical"},
+    "exec_command": {"category": "shell", "impact": "critical"},
+    "functions.exec_command": {"category": "shell", "impact": "critical"},
+    "WebFetch": {"category": "network.fetch", "impact": "medium"},
+    "WebSearch": {"category": "network.search", "impact": "medium"},
+    "TodoWrite": {"category": "planning", "impact": "medium"},
+    "update_plan": {"category": "planning", "impact": "medium"},
+    "Task": {"category": "agent.spawn", "impact": "high"},
+    "spawn_agent": {"category": "agent.spawn", "impact": "high"},
+    "send_input": {"category": "agent.control", "impact": "high"},
+    "wait_agent": {"category": "agent.control", "impact": "medium"},
+}
 
 
 def utc_now() -> str:
@@ -371,6 +402,17 @@ class Ledger:
               created_at TEXT,
               resolved_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS tool_registry (
+              tool_name TEXT PRIMARY KEY,
+              category TEXT,
+              impact TEXT,
+              pre_hook INTEGER,
+              post_hook INTEGER,
+              path_mode TEXT,
+              created_at TEXT,
+              updated_at TEXT,
+              metadata_json TEXT
+            );
             CREATE INDEX IF NOT EXISTS idx_events_resource_created
               ON events(resource_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_events_session_resource
@@ -389,7 +431,105 @@ class Ledger:
               ON conditions(event_id, created_at);
             """
         )
+        self.seed_default_tools()
         self.conn.commit()
+
+    def seed_default_tools(self) -> None:
+        now = utc_now()
+        for tool_name, spec in DEFAULT_TOOL_SPECS.items():
+            self.conn.execute(
+                """
+                INSERT INTO tool_registry(
+                  tool_name, category, impact, pre_hook, post_hook,
+                  path_mode, created_at, updated_at, metadata_json
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tool_name) DO NOTHING
+                """,
+                (
+                    tool_name,
+                    spec.get("category", "custom"),
+                    spec.get("impact", "medium"),
+                    1,
+                    1,
+                    spec.get("path_mode", "auto"),
+                    now,
+                    now,
+                    json_dumps({"source": "default"}),
+                ),
+            )
+
+    def register_tool(
+        self,
+        tool_name: str,
+        category: str = "custom",
+        impact: str = "medium",
+        pre_hook: bool = True,
+        post_hook: bool = True,
+        path_mode: str = "auto",
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        now = utc_now()
+        self.conn.execute(
+            """
+            INSERT INTO tool_registry(
+              tool_name, category, impact, pre_hook, post_hook,
+              path_mode, created_at, updated_at, metadata_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tool_name) DO UPDATE SET
+              category=excluded.category,
+              impact=excluded.impact,
+              pre_hook=excluded.pre_hook,
+              post_hook=excluded.post_hook,
+              path_mode=excluded.path_mode,
+              updated_at=excluded.updated_at,
+              metadata_json=excluded.metadata_json
+            """,
+            (
+                tool_name,
+                category,
+                impact,
+                1 if pre_hook else 0,
+                1 if post_hook else 0,
+                path_mode,
+                now,
+                now,
+                json_dumps(metadata or {}),
+            ),
+        )
+        self.conn.commit()
+
+    def tool_registration(self, tool_name: str) -> sqlite3.Row | None:
+        row = self.conn.execute(
+            "SELECT * FROM tool_registry WHERE tool_name=?",
+            (tool_name,),
+        ).fetchone()
+        if row:
+            return row
+        if tool_name.startswith("mcp__"):
+            self.register_tool(tool_name, category="mcp", impact="high", metadata={"source": "auto-mcp"})
+            return self.tool_registration(tool_name)
+        if "." in tool_name:
+            self.register_tool(tool_name, category="external", impact="medium", metadata={"source": "auto-dotted"})
+            return self.tool_registration(tool_name)
+        return None
+
+    def list_tools(self) -> list[sqlite3.Row]:
+        return list(
+            self.conn.execute(
+                """
+                SELECT * FROM tool_registry
+                ORDER BY CASE impact
+                  WHEN 'critical' THEN 0
+                  WHEN 'high' THEN 1
+                  WHEN 'medium' THEN 2
+                  WHEN 'low' THEN 3
+                  ELSE 4
+                END, tool_name
+                """
+            )
+        )
 
     def ensure_actor(
         self,
@@ -1043,6 +1183,13 @@ def extract_bash_write_paths(command: str, cwd: str | Path | None = None) -> lis
 def extract_read_paths(tool_name: str, tool_input: dict[str, Any], cwd: str | Path | None = None) -> list[str]:
     if tool_name in READ_TOOLS and tool_input.get("file_path"):
         return [str(normalize_path(tool_input["file_path"], cwd))]
+    if tool_name in {"Grep", "Glob", "LS"}:
+        paths = []
+        for key in ("path", "file_path", "directory"):
+            value = tool_input.get(key)
+            if isinstance(value, str) and value:
+                paths.append(str(normalize_path(value, cwd)))
+        return paths
     return []
 
 
@@ -1063,6 +1210,19 @@ def extract_write_paths(tool_name: str, tool_input: dict[str, Any], cwd: str | P
         command = str(tool_input.get("command") or "")
         paths.extend(extract_bash_write_paths(command, cwd))
     return list(dict.fromkeys(paths))
+
+
+def tool_metadata(row: sqlite3.Row | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "tool_name": row["tool_name"],
+        "category": row["category"],
+        "impact": row["impact"],
+        "pre_hook": bool(row["pre_hook"]),
+        "post_hook": bool(row["post_hook"]),
+        "path_mode": row["path_mode"],
+    }
 
 
 def hook_response(event_name: str, decision: Decision) -> dict[str, Any]:
@@ -1139,8 +1299,29 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
     tool_input = input_json.get("tool_input") or {}
     if not isinstance(tool_input, dict):
         tool_input = {}
+    registration = ledger.tool_registration(tool_name)
+    if tool_name and not registration:
+        ledger.register_tool(
+            tool_name,
+            category="custom",
+            impact="medium",
+            metadata={"source": "auto-seen-hook"},
+        )
+        registration = ledger.tool_registration(tool_name)
+    registration_metadata = tool_metadata(registration)
 
     if normalized_event in {"pre-tool-use", "pretooluse"}:
+        ledger.record_event(
+            session_id,
+            "tool-pre",
+            tool_name=tool_name,
+            status="started",
+            metadata={
+                "tool_input": tool_input,
+                "tool_registration": registration_metadata,
+                "source": "hook",
+            },
+        )
         paths = extract_write_paths(tool_name, tool_input, cwd)
         if not paths:
             return None
@@ -1159,6 +1340,19 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
 
     if normalized_event in {"post-tool-use", "posttooluse"}:
         paths = extract_read_paths(tool_name, tool_input, cwd)
+        tool_response = input_json.get("tool_response") or input_json.get("tool_output")
+        ledger.record_event(
+            session_id,
+            "tool",
+            tool_name=tool_name,
+            status="success",
+            metadata={
+                "tool_input": tool_input,
+                "tool_response": tool_response,
+                "tool_registration": registration_metadata,
+                "source": "hook",
+            },
+        )
         for path in paths:
             ledger.record_event(
                 session_id,
@@ -1166,7 +1360,7 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
                 path=path,
                 cwd=cwd,
                 tool_name=tool_name,
-                metadata={"tool_input": tool_input, "tool_response": input_json.get("tool_response") or input_json.get("tool_output")},
+                metadata={"tool_input": tool_input, "tool_response": tool_response, "tool_registration": registration_metadata},
             )
         write_paths = extract_write_paths(tool_name, tool_input, cwd)
         for path in write_paths:
@@ -1176,7 +1370,7 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
                 path=path,
                 cwd=cwd,
                 tool_name=tool_name,
-                metadata={"tool_input": tool_input, "tool_response": input_json.get("tool_response") or input_json.get("tool_output")},
+                metadata={"tool_input": tool_input, "tool_response": tool_response, "tool_registration": registration_metadata},
             )
         if paths or write_paths:
             changed = ", ".join(Path(p).name for p in paths + write_paths)
@@ -1184,6 +1378,13 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
                 "hookSpecificOutput": {
                     "hookEventName": input_json.get("hook_event_name", "PostToolUse"),
                     "additionalContext": f"AID recorded {tool_name} activity: {changed}",
+                }
+            }
+        if tool_name:
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": input_json.get("hook_event_name", "PostToolUse"),
+                    "additionalContext": f"AID recorded {tool_name} tool activity",
                 }
             }
     return None

@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 from .core import (
+    DEFAULT_TOOL_MATCHER,
     Ledger,
     compact_awareness_lines,
     default_actor_id,
@@ -232,6 +234,83 @@ def cmd_outcome(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tool_list(args: argparse.Namespace) -> int:
+    ledger = Ledger(args.ledger)
+    rows = [dict(row) for row in ledger.list_tools()]
+    if args.json:
+        print_json(rows)
+        return 0
+    for row in rows:
+        print(
+            f"{row['tool_name']}\timpact={row['impact']}\tcategory={row['category']}\t"
+            f"pre={bool(row['pre_hook'])}\tpost={bool(row['post_hook'])}\tpath_mode={row['path_mode']}"
+        )
+    return 0
+
+
+def cmd_tool_register(args: argparse.Namespace) -> int:
+    ledger = Ledger(args.ledger)
+    metadata = {
+        "source": "cli",
+        "description": args.description,
+        "resource_hints": args.resource_hint,
+        "side_effects": args.side_effect,
+    }
+    ledger.register_tool(
+        args.name,
+        category=args.category,
+        impact=args.impact,
+        pre_hook=not args.no_pre,
+        post_hook=not args.no_post,
+        path_mode=args.path_mode,
+        metadata=metadata,
+    )
+    print_json({"registered": args.name, "category": args.category, "impact": args.impact})
+    return 0
+
+
+def cmd_tool_explain(args: argparse.Namespace) -> int:
+    ledger = Ledger(args.ledger)
+    row = ledger.tool_registration(args.name)
+    if not row:
+        print(f"No AID tool registration found for {args.name}", file=sys.stderr)
+        return 1
+    data = dict(row)
+    try:
+        metadata = json.loads(data.get("metadata_json") or "{}")
+    except json.JSONDecodeError:
+        metadata = {}
+    payload = {**data, "metadata": metadata}
+    if args.json:
+        print_json(payload)
+        return 0
+    print(f"Tool: {data['tool_name']}")
+    print(f"Category: {data['category']}")
+    print(f"Impact: {data['impact']}")
+    print(f"Pre/Post hook: {bool(data['pre_hook'])}/{bool(data['post_hook'])}")
+    print(f"Path mode: {data['path_mode']}")
+    if metadata.get("description"):
+        print(f"Description: {metadata['description']}")
+    if metadata.get("resource_hints"):
+        print("Resource hints:")
+        for hint in metadata["resource_hints"]:
+            print(f"- {hint}")
+    if metadata.get("side_effects"):
+        print("Side effects:")
+        for effect in metadata["side_effects"]:
+            print(f"- {effect}")
+    return 0
+
+
+def cmd_tool_matcher(args: argparse.Namespace) -> int:
+    ledger = Ledger(args.ledger)
+    names = [row["tool_name"] for row in ledger.list_tools() if row["pre_hook"] or row["post_hook"]]
+    escaped = [re.escape(name) for name in names]
+    matcher = "|".join(dict.fromkeys([DEFAULT_TOOL_MATCHER, *escaped]))
+    print(matcher)
+    return 0
+
+
 def cmd_hook(args: argparse.Namespace) -> int:
     ledger = Ledger(args.ledger)
     payload = read_stdin_json()
@@ -336,7 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_set.set_defaults(func=cmd_goal_set)
 
     p = sub.add_parser("record")
-    p.add_argument("event_type", choices=["read", "write", "patch", "delete", "move", "run", "claim"])
+    p.add_argument("event_type", choices=["read", "write", "patch", "delete", "move", "run", "claim", "tool", "tool-pre"])
     p.add_argument("path")
     p.add_argument("--session-id")
     p.add_argument("--actor")
@@ -417,6 +496,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--summary", required=True)
     p.add_argument("--evidence")
     p.set_defaults(func=cmd_outcome)
+
+    p = sub.add_parser("tool")
+    tool_sub = p.add_subparsers(dest="tool_command", required=True)
+    p_list = tool_sub.add_parser("list")
+    p_list.add_argument("--json", action="store_true")
+    p_list.set_defaults(func=cmd_tool_list)
+
+    p_register = tool_sub.add_parser("register")
+    p_register.add_argument("name")
+    p_register.add_argument("--category", default="custom")
+    p_register.add_argument("--impact", choices=["low", "medium", "high", "critical"], default="medium")
+    p_register.add_argument("--path-mode", choices=["none", "auto", "read", "write"], default="auto")
+    p_register.add_argument("--description")
+    p_register.add_argument("--resource-hint", action="append", default=[])
+    p_register.add_argument("--side-effect", action="append", default=[])
+    p_register.add_argument("--no-pre", action="store_true")
+    p_register.add_argument("--no-post", action="store_true")
+    p_register.set_defaults(func=cmd_tool_register)
+
+    p_explain = tool_sub.add_parser("explain")
+    p_explain.add_argument("name")
+    p_explain.add_argument("--json", action="store_true")
+    p_explain.set_defaults(func=cmd_tool_explain)
+
+    p_matcher = tool_sub.add_parser("matcher")
+    p_matcher.set_defaults(func=cmd_tool_matcher)
 
     p = sub.add_parser("hook")
     p.add_argument("event", nargs="?", help="Override hook event name, e.g. pre-tool-use")

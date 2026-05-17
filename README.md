@@ -143,6 +143,7 @@ AID stores a local SQLite timeline:
 - agent identity: Codex, Claude Code, Bash, human shell
 - session ID and actor ID
 - current goal or user intent
+- registered tool activity, not only reads and writes
 - read and write events
 - preconditions, such as read-before-write
 - stale-write hazards
@@ -160,7 +161,14 @@ aid check-write path/to/file.py
 aid chain <event-id>
 aid evaluate <event-id> --verdict bad --reason "Changed schema without reading latest file."
 aid run --goal "manual shell edit" -- "printf 'hello\n' > note.txt"
+aid tool list
+aid tool register image_gen.imagegen --category asset.generate --impact high \
+  --description "Generate or edit project image assets" \
+  --resource-hint "may create files under assets/"
+aid tool explain image_gen.imagegen
 ```
+
+The bundled `aid` skill is also an operator manual. It explains how to use AID, register new tools, and safely modify AID itself.
 
 ## Architecture
 
@@ -175,7 +183,7 @@ flowchart TD
     Action --> Hook
 ```
 
-Before a write, AID asks:
+Every registered tool can leave a trace. Before a resource-changing write, AID asks:
 
 - did this session read the file?
 - did someone else change it after that read?

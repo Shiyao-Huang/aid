@@ -27,7 +27,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|apply_patch|Write|Edit|MultiEdit",
+        "matcher": "Task|Bash|Shell|exec_command|functions\\.exec_command|apply_patch|ApplyPatch|Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob|LS|WebFetch|WebSearch|TodoWrite|update_plan|spawn_agent|send_input|wait_agent|mcp__.*",
         "hooks": [
           {
             "type": "command",
@@ -40,7 +40,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|apply_patch|Read|Write|Edit|MultiEdit",
+        "matcher": "Task|Bash|Shell|exec_command|functions\\.exec_command|apply_patch|ApplyPatch|Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob|LS|WebFetch|WebSearch|TodoWrite|update_plan|spawn_agent|send_input|wait_agent|mcp__.*",
         "hooks": [
           {
             "type": "command",

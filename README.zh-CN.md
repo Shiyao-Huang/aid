@@ -38,6 +38,7 @@ curl -sfL https://raw.githubusercontent.com/Shiyao-Huang/aid/main/install.sh | b
 - 让 Codex、Claude Code、Bash 共用 `~/.aid/ledger.sqlite`
 - 默认安装 GitNexus，用来提供代码影响上下文
 - 默认开启严格写前读：已有文件必须被当前 session 读过才能写
+- 默认绑定高影响工具，不只是读写；Bash、patch、agent、MCP、web、plan 等工具都可以进入同一条时间线
 
 如果你要临时放松：
 
@@ -123,7 +124,14 @@ aid check-write path/to/file.py
 aid chain <event-id>
 aid evaluate <event-id> --verdict bad --reason "Changed schema without reading latest file."
 aid run --goal "manual shell edit" -- "printf 'hello\n' > note.txt"
+aid tool list
+aid tool register image_gen.imagegen --category asset.generate --impact high \
+  --description "Generate or edit project image assets" \
+  --resource-hint "may create files under assets/"
+aid tool explain image_gen.imagegen
 ```
+
+内置的 `aid` skill 就是操作说明书：怎么用 AID、怎么注册新工具、怎么安全修改 AID 本体，都写在那里。
 
 ## 架构
 

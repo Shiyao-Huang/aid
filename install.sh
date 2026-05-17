@@ -187,6 +187,12 @@ mode, scope, root, ledger, with_gitnexus = sys.argv[1], sys.argv[2], Path(sys.ar
 hook = root / "hooks" / "aid-hook"
 cwd = Path.cwd()
 home = Path.home()
+tool_matcher = os.environ.get(
+    "AID_TOOL_MATCHER",
+    "Task|Bash|Shell|exec_command|functions\\.exec_command|apply_patch|ApplyPatch|"
+    "Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob|LS|"
+    "WebFetch|WebSearch|TodoWrite|update_plan|spawn_agent|send_input|wait_agent|mcp__.*",
+)
 
 
 def backup(path: Path) -> None:
@@ -257,8 +263,8 @@ def install_codex() -> None:
     remove_aid_hooks(hooks)
     add_group(hooks, "SessionStart", "startup|resume", "session-start", "codex", "Registering AID session")
     add_group(hooks, "UserPromptSubmit", None, "user-prompt-submit", "codex", "Recording AID goal")
-    add_group(hooks, "PreToolUse", "Bash|apply_patch|Write|Edit|MultiEdit", "pre-tool-use", "codex", "Checking AID operation chain")
-    add_group(hooks, "PostToolUse", "Bash|apply_patch|Read|Write|Edit|MultiEdit", "post-tool-use", "codex", "Recording AID trace")
+    add_group(hooks, "PreToolUse", tool_matcher, "pre-tool-use", "codex", "Checking AID operation chain")
+    add_group(hooks, "PostToolUse", tool_matcher, "post-tool-use", "codex", "Recording AID trace")
     backup(path)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Configured Codex hooks: {path}")
@@ -272,8 +278,8 @@ def install_claude() -> None:
     remove_aid_hooks(hooks)
     add_group(hooks, "SessionStart", None, "session-start", "claude", "Registering AID session")
     add_group(hooks, "UserPromptSubmit", None, "user-prompt-submit", "claude", "Recording AID goal")
-    add_group(hooks, "PreToolUse", "Write|Edit|MultiEdit|Bash", "pre-tool-use", "claude", "Checking AID operation chain")
-    add_group(hooks, "PostToolUse", "Read|Write|Edit|MultiEdit|Bash", "post-tool-use", "claude", "Recording AID trace")
+    add_group(hooks, "PreToolUse", tool_matcher, "pre-tool-use", "claude", "Checking AID operation chain")
+    add_group(hooks, "PostToolUse", tool_matcher, "post-tool-use", "claude", "Recording AID trace")
     backup(path)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Configured Claude Code hooks: {path}")

@@ -172,6 +172,30 @@ class AidHookTests(unittest.TestCase):
         self.assertIn("has not been read", encoded)
         self.assertIn("hook.txt", encoded)
 
+    def test_non_file_tool_is_registered_and_traced(self):
+        response = handle_hook(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "web-agent",
+                "cwd": str(self.root),
+                "tool_name": "WebFetch",
+                "tool_input": {"url": "https://example.com"},
+                "tool_response": {"status": 200},
+            },
+            ledger=self.ledger,
+        )
+
+        self.assertIsNotNone(response)
+        self.assertIn("WebFetch", json.dumps(response))
+        rows = self.ledger.conn.execute(
+            "SELECT event_type, tool_name FROM events WHERE session_id=? ORDER BY created_at DESC",
+            ("web-agent",),
+        ).fetchall()
+        self.assertEqual(rows[0]["event_type"], "tool")
+        self.assertEqual(rows[0]["tool_name"], "WebFetch")
+        registered = self.ledger.tool_registration("WebFetch")
+        self.assertEqual(registered["category"], "network.fetch")
+
 
 class AidCliTests(unittest.TestCase):
     def setUp(self):
@@ -238,6 +262,36 @@ class AidCliTests(unittest.TestCase):
         self.assertEqual(json.loads(blocked.stdout)["decision"], "block")
         self.assertEqual(relaxed.returncode, 0)
         self.assertEqual(json.loads(relaxed.stdout)["decision"], "warn")
+
+    def test_cli_registers_custom_tool(self):
+        registered = self.run_aid(
+            "tool",
+            "register",
+            "image_gen.imagegen",
+            "--category",
+            "asset.generate",
+            "--impact",
+            "high",
+            "--description",
+            "Generate project images.",
+            "--resource-hint",
+            "writes generated image assets",
+            "--side-effect",
+            "may create files under assets/",
+        )
+        listed = self.run_aid("tool", "list", "--json")
+        matcher = self.run_aid("tool", "matcher")
+        explained = self.run_aid("tool", "explain", "image_gen.imagegen", "--json")
+
+        self.assertEqual(registered.returncode, 0, registered.stderr)
+        tools = json.loads(listed.stdout)
+        image_tool = next(row for row in tools if row["tool_name"] == "image_gen.imagegen")
+        self.assertEqual(image_tool["category"], "asset.generate")
+        self.assertEqual(image_tool["impact"], "high")
+        self.assertIn("image_gen\\.imagegen", matcher.stdout)
+        metadata = json.loads(explained.stdout)["metadata"]
+        self.assertEqual(metadata["description"], "Generate project images.")
+        self.assertEqual(metadata["resource_hints"], ["writes generated image assets"])
 
 
 if __name__ == "__main__":
