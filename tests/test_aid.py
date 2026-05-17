@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from aid.core import Ledger, handle_hook
+from aid.core import Ledger, compact_awareness_lines, handle_hook
 
 
 class AidLedgerTests(unittest.TestCase):
@@ -92,6 +92,22 @@ class AidLedgerTests(unittest.TestCase):
                 os.environ.pop("AID_GITNEXUS", None)
             else:
                 os.environ["AID_GITNEXUS"] = old_flag
+
+    def test_awareness_is_budgeted_and_recent_first(self):
+        self.ledger.ensure_session("main", "main", harness="codex", cwd=str(self.root))
+        for index in range(6):
+            sid = f"peer-{index}"
+            self.ledger.ensure_session(sid, f"peer-{index}", harness="claude", cwd=str(self.root))
+            self.ledger.set_goal(sid, f"goal {index} with a long explanation that should be clipped by awareness")
+            self.file.write_text(f"v{index}\n", encoding="utf-8")
+            self.ledger.record_event(sid, "write", path=self.file, cwd=self.root, tool_name="Write")
+
+        awareness = self.ledger.awareness("main", self.file, self.root)
+        lines = compact_awareness_lines(awareness, max_lines=5)
+
+        self.assertLessEqual(len(lines), 5)
+        self.assertIn("peer-5", "\n".join(lines))
+        self.assertIn("clipped", lines[-1])
 
 
 class AidHookTests(unittest.TestCase):

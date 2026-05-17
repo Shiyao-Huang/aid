@@ -111,12 +111,16 @@ def detect_harness(input_json: dict[str, Any] | None = None) -> str:
 
 
 def default_actor_id() -> str:
-    return (
+    base = (
         os.environ.get("AID_ACTOR")
         or os.environ.get("USER")
         or os.environ.get("USERNAME")
         or "unknown"
     )
+    harness = detect_harness()
+    if harness and harness not in ("unknown", "bash"):
+        return f"{base}/{harness}"
+    return base
 
 
 def stable_session_id(input_json: dict[str, Any] | None = None) -> str:
@@ -178,6 +182,30 @@ def gitnexus_enabled() -> bool:
 
 def strict_missing_read_enabled() -> bool:
     return env_enabled("AID_STRICT_MISSING_READ", default=True)
+
+
+def awareness_line_budget() -> int:
+    raw = os.environ.get("AID_AWARENESS_LINES", "8")
+    try:
+        return max(3, min(40, int(raw)))
+    except ValueError:
+        return 8
+
+
+def awareness_text_budget() -> int:
+    raw = os.environ.get("AID_AWARENESS_CHARS", "140")
+    try:
+        return max(60, min(500, int(raw)))
+    except ValueError:
+        return 140
+
+
+def clip_text(value: str | None, limit: int | None = None) -> str:
+    text = " ".join(str(value or "").split())
+    limit = limit or awareness_text_budget()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
 
 
 def run_gitnexus(args: list[str], cwd: str | Path, timeout: int = 8) -> subprocess.CompletedProcess[str] | None:
@@ -980,12 +1008,12 @@ class Ledger:
         gn_context = gitnexus_file_context(normalized, cwd)
         last_read = self.last_read(session_id, resource_id)
         recent_writes = self.recent_events_for_resource(
-            resource_id, limit=5, exclude_session=session_id, event_types=("write", "patch", "delete", "move")
+            resource_id, limit=3, exclude_session=session_id, event_types=("write", "patch", "delete", "move")
         )
         recent_reads = self.recent_events_for_resource(
-            resource_id, limit=3, exclude_session=session_id, event_types=("read",)
+            resource_id, limit=2, exclude_session=session_id, event_types=("read",)
         )
-        evaluations = self.evaluations_for_resource(resource_id, limit=3)
+        evaluations = self.evaluations_for_resource(resource_id, limit=2)
         goal = self.current_goal(session_id)
         session = self.conn.execute(
             """
@@ -1104,40 +1132,46 @@ class Ledger:
         return Decision("allow", context=context, resource_paths=(resource["path"],))
 
 
-def compact_awareness_lines(awareness: dict[str, Any]) -> list[str]:
+def compact_awareness_lines(awareness: dict[str, Any], max_lines: int | None = None) -> list[str]:
+    max_lines = max_lines or awareness_line_budget()
     path = awareness["resource"]["path"]
     lines = [f"AID awareness for {path}:"]
     goal = awareness.get("goal")
     if goal:
-        lines.append(f"- Current goal: {goal['summary']}")
+        lines.append(f"- Goal: {clip_text(goal['summary'])}")
     last_read = awareness.get("my_last_read")
     if last_read:
         lines.append(f"- Your last read: {last_read['created_at']} hash {str(last_read['after_hash'] or '')[:12]}")
     else:
         lines.append("- Your last read: none recorded")
+    risk_lines: list[str] = []
     for row in awareness.get("recent_writes", [])[:3]:
         who = row.get("actor_id") or row.get("session_id")
-        why = row.get("goal_summary") or "unknown goal"
-        lines.append(f"- Recent write: {who}/{row.get('session_id')} at {row.get('created_at')}, goal: {why}")
-    for row in awareness.get("recent_reads", [])[:2]:
-        who = row.get("actor_id") or row.get("session_id")
-        why = row.get("goal_summary") or "unknown goal"
-        lines.append(f"- Recent read: {who}/{row.get('session_id')} at {row.get('created_at')}, goal: {why}")
+        why = clip_text(row.get("goal_summary") or "unknown goal")
+        risk_lines.append(f"- Recent write: {who}/{row.get('session_id')} at {row.get('created_at')}, goal: {why}")
     for row in awareness.get("evaluations", [])[:2]:
         verdict = row.get("verdict")
-        reason = row.get("reason") or ""
-        lines.append(f"- Prior evaluation: {verdict}, {reason[:180]}")
+        reason = clip_text(row.get("reason") or "")
+        risk_lines.append(f"- Prior evaluation: {verdict}, {reason}")
+    lines.extend(risk_lines)
+    for row in awareness.get("recent_reads", [])[:2]:
+        who = row.get("actor_id") or row.get("session_id")
+        why = clip_text(row.get("goal_summary") or "unknown goal")
+        lines.append(f"- Recent read: {who}/{row.get('session_id')} at {row.get('created_at')}, goal: {why}")
     gitnexus = (awareness.get("behavior_context") or {}).get("gitnexus")
     if gitnexus:
         if gitnexus.get("available"):
             lines.append(f"- GitNexus importance: {gitnexus.get('importance', 'unknown')}")
-            summary = (gitnexus.get("summary") or "").replace("\n", " ")
+            summary = clip_text(gitnexus.get("summary") or "")
             if summary:
-                lines.append(f"- GitNexus context: {summary[:220]}")
+                lines.append(f"- GitNexus context: {summary}")
         else:
-            lines.append(f"- GitNexus context: {gitnexus.get('summary')}")
+            lines.append(f"- GitNexus context: {clip_text(gitnexus.get('summary'))}")
     if len(lines) == 2:
         lines.append("- No peer writes or evaluations found for this resource.")
+    if len(lines) > max_lines:
+        hidden = len(lines) - max_lines + 1
+        return lines[: max_lines - 1] + [f"- More context clipped: {hidden} lines. Use `aid recent` or `aid chain` to expand."]
     return lines
 
 

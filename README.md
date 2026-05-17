@@ -50,6 +50,7 @@ By default, AID starts in **maximum capability mode**:
 - makes Codex, Claude Code, and Bash share `~/.aid/ledger.sqlite`
 - installs GitNexus if missing, so AID can include code-impact context
 - enables strict read-before-write checks for existing files
+- keeps injected awareness short: nearest, riskiest, highest-signal context first
 
 Options:
 
@@ -66,6 +67,7 @@ To relax the default locally:
 AID_STRICT_MISSING_READ=0 aid check-write path/to/file.py
 AID_GITNEXUS=0 aid awareness path/to/file.py
 aid check-write path/to/file.py --allow-missing-read
+aid awareness path/to/file.py --lines 12
 ```
 
 ## The Wow Demo

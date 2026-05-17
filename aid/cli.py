@@ -44,12 +44,13 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     ledger = Ledger(args.ledger)
+    sid = os.environ.get("AID_SESSION_ID") or stable_session_id()
     info = {
         "version": __version__,
         "ledger": str(ledger.path),
         "home": str(ledger.path.parent),
         "actor": default_actor_id(),
-        "session": os.environ.get("AID_SESSION_ID"),
+        "session": sid,
         "harness": os.environ.get("AID_HARNESS") or "auto",
     }
     print_json(info) if args.json else print("\n".join(f"{k}: {v}" for k, v in info.items()))
@@ -193,7 +194,8 @@ def cmd_awareness(args: argparse.Namespace) -> int:
     if args.json:
         print_json(data)
     else:
-        print("\n".join(compact_awareness_lines(data)))
+        max_lines = args.lines or (20 if args.verbose else None)
+        print("\n".join(compact_awareness_lines(data, max_lines=max_lines)))
     return 0
 
 
@@ -467,6 +469,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--actor")
     p.add_argument("--harness")
     p.add_argument("--cwd", default=os.getcwd())
+    p.add_argument("--lines", type=int)
+    p.add_argument("--verbose", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_awareness)
 

@@ -43,6 +43,7 @@ Default mode is maximum capability:
 - `AID_GITNEXUS=1`: GitNexus context is included when available
 - Codex, Claude Code, and Bash share one ledger
 - high-impact tools are hooked by default
+- awareness output is budgeted by default: nearest, riskiest, highest-signal lines first
 
 Relax only when there is a clear reason:
 
@@ -51,6 +52,24 @@ AID_STRICT_MISSING_READ=0 aid check-write <file>
 AID_GITNEXUS=0 aid awareness <file>
 aid check-write <file> --allow-missing-read
 ```
+
+Expand context only when needed:
+
+```bash
+aid awareness <file> --lines 12
+aid awareness <file> --verbose
+AID_AWARENESS_LINES=12 AID_AWARENESS_CHARS=220 aid awareness <file>
+aid recent <file> --limit 20
+aid chain <event-id>
+```
+
+Context rule:
+
+```text
+nearest > risky > evaluated > high-impact > everything else
+```
+
+Keep default hook context short. Use `recent` and `chain` for deep inspection.
 
 ## Tool Registration
 

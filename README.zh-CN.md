@@ -39,6 +39,7 @@ curl -sfL https://raw.githubusercontent.com/Shiyao-Huang/aid/main/install.sh | b
 - 默认安装 GitNexus，用来提供代码影响上下文
 - 默认开启严格写前读：已有文件必须被当前 session 读过才能写
 - 默认绑定高影响工具，不只是读写；Bash、patch、agent、MCP、web、plan 等工具都可以进入同一条时间线
+- 默认限制上下文长度：越近越重要，风险更高和信噪比更高的内容优先
 
 如果你要临时放松：
 
@@ -46,6 +47,7 @@ curl -sfL https://raw.githubusercontent.com/Shiyao-Huang/aid/main/install.sh | b
 AID_STRICT_MISSING_READ=0 aid check-write path/to/file.py
 AID_GITNEXUS=0 aid awareness path/to/file.py
 aid check-write path/to/file.py --allow-missing-read
+aid awareness path/to/file.py --lines 12
 ```
 
 ## 惊艳对比剧场
