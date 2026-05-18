@@ -204,3 +204,19 @@ what side effects it may cause
 how AID should trace it
 how future agents should interpret it
 ```
+
+## Borrowed From Selftools
+
+AID hook metadata should include a compact canonical tool envelope:
+
+```text
+schema_version = aid.tool-envelope.v1
+runtime
+phase
+tool.name/input/response/contract
+session.id/actor/runtime/cwd
+intent.value/source
+timestamps.received_at
+```
+
+This keeps AID interoperable with file-backed systems such as selftools/AIDS that think in ToolEnvelope, timeline, trace, and rating records.

@@ -1259,6 +1259,43 @@ def tool_metadata(row: sqlite3.Row | None) -> dict[str, Any] | None:
     }
 
 
+def canonical_tool_envelope(
+    input_json: dict[str, Any],
+    *,
+    phase: str,
+    session_id: str,
+    harness: str,
+    tool_name: str,
+    tool_input: dict[str, Any],
+    tool_registration: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": "aid.tool-envelope.v1",
+        "runtime": harness,
+        "phase": phase,
+        "tool": {
+            "name": tool_name,
+            "input": tool_input,
+            "response": input_json.get("tool_response") or input_json.get("tool_output"),
+            "contract": tool_registration,
+        },
+        "session": {
+            "id": session_id,
+            "actor": default_actor_id(),
+            "runtime": harness,
+            "cwd": input_json.get("cwd") or os.getcwd(),
+            "transcript_path": input_json.get("transcript_path"),
+        },
+        "intent": {
+            "value": extract_prompt(input_json) or "",
+            "source": "hook_payload" if extract_prompt(input_json) else "session_goal",
+        },
+        "timestamps": {
+            "received_at": utc_now(),
+        },
+    }
+
+
 def hook_response(event_name: str, decision: Decision) -> dict[str, Any]:
     context = decision.context
     if decision.reason and decision.reason not in context:
@@ -1345,6 +1382,15 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
     registration_metadata = tool_metadata(registration)
 
     if normalized_event in {"pre-tool-use", "pretooluse"}:
+        envelope = canonical_tool_envelope(
+            input_json,
+            phase="pre_tool_use",
+            session_id=session_id,
+            harness=harness,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            tool_registration=registration_metadata,
+        )
         ledger.record_event(
             session_id,
             "tool-pre",
@@ -1353,6 +1399,7 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
             metadata={
                 "tool_input": tool_input,
                 "tool_registration": registration_metadata,
+                "tool_envelope": envelope,
                 "source": "hook",
             },
         )
@@ -1375,6 +1422,15 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
     if normalized_event in {"post-tool-use", "posttooluse"}:
         paths = extract_read_paths(tool_name, tool_input, cwd)
         tool_response = input_json.get("tool_response") or input_json.get("tool_output")
+        envelope = canonical_tool_envelope(
+            input_json,
+            phase="post_tool_use",
+            session_id=session_id,
+            harness=harness,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            tool_registration=registration_metadata,
+        )
         ledger.record_event(
             session_id,
             "tool",
@@ -1384,6 +1440,7 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
                 "tool_input": tool_input,
                 "tool_response": tool_response,
                 "tool_registration": registration_metadata,
+                "tool_envelope": envelope,
                 "source": "hook",
             },
         )
@@ -1394,7 +1451,7 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
                 path=path,
                 cwd=cwd,
                 tool_name=tool_name,
-                metadata={"tool_input": tool_input, "tool_response": tool_response, "tool_registration": registration_metadata},
+                metadata={"tool_input": tool_input, "tool_response": tool_response, "tool_registration": registration_metadata, "tool_envelope": envelope},
             )
         write_paths = extract_write_paths(tool_name, tool_input, cwd)
         for path in write_paths:
@@ -1404,7 +1461,7 @@ def handle_hook(input_json: dict[str, Any], event_override: str | None = None, l
                 path=path,
                 cwd=cwd,
                 tool_name=tool_name,
-                metadata={"tool_input": tool_input, "tool_response": tool_response, "tool_registration": registration_metadata},
+                metadata={"tool_input": tool_input, "tool_response": tool_response, "tool_registration": registration_metadata, "tool_envelope": envelope},
             )
         if paths or write_paths:
             changed = ", ".join(Path(p).name for p in paths + write_paths)

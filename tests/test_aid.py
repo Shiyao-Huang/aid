@@ -204,11 +204,14 @@ class AidHookTests(unittest.TestCase):
         self.assertIsNotNone(response)
         self.assertIn("WebFetch", json.dumps(response))
         rows = self.ledger.conn.execute(
-            "SELECT event_type, tool_name FROM events WHERE session_id=? ORDER BY created_at DESC",
+            "SELECT event_type, tool_name, metadata_json FROM events WHERE session_id=? ORDER BY created_at DESC",
             ("web-agent",),
         ).fetchall()
         self.assertEqual(rows[0]["event_type"], "tool")
         self.assertEqual(rows[0]["tool_name"], "WebFetch")
+        metadata = json.loads(rows[0]["metadata_json"])
+        self.assertEqual(metadata["tool_envelope"]["schema_version"], "aid.tool-envelope.v1")
+        self.assertEqual(metadata["tool_envelope"]["tool"]["name"], "WebFetch")
         registered = self.ledger.tool_registration("WebFetch")
         self.assertEqual(registered["category"], "network.fetch")
 

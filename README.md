@@ -202,3 +202,7 @@ AID is not a Git replacement. Git records commits. AID records the live working-
 AID is not a GitNexus replacement. GitNexus explains code impact. AID explains identity, intent, operation chains, and feedback.
 
 AID does not force agents into one hard-coded collaboration style. It gives each agent self, others, environment, and consequences. Collaboration can emerge from that.
+
+## Interop With Selftools / AIDS
+
+AID borrows the ToolEnvelope idea from selftools/AIDS: hook metadata includes a compact `aid.tool-envelope.v1` object with runtime, phase, tool, session, intent, and timestamps. That makes AID easier to bridge into JSONL timeline systems while keeping SQLite as the local query engine.
