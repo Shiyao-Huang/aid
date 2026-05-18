@@ -13,3 +13,6 @@ __pycache__/
 
 # Local runtime state.
 .aid/
+
+# Claude Code session files
+.claude/
