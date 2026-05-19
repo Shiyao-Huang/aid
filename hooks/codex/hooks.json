@@ -1,12 +1,37 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'exec \"${PLUGIN_ROOT:-$PWD}/hooks/aid-hook\" session-start'",
+            "timeout": 10,
+            "statusMessage": "Registering AID session"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'exec \"${PLUGIN_ROOT:-$PWD}/hooks/aid-hook\" user-prompt-submit'",
+            "timeout": 10,
+            "statusMessage": "Recording AID goal"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Task|Bash|Shell|exec_command|functions\\.exec_command|apply_patch|ApplyPatch|Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob|LS|WebFetch|WebSearch|TodoWrite|update_plan|spawn_agent|send_input|wait_agent|mcp__.*",
         "hooks": [
           {
             "type": "command",
-            "command": "./hooks/aid-hook pre-tool-use",
+            "command": "sh -c 'exec \"${PLUGIN_ROOT:-$PWD}/hooks/aid-hook\" pre-tool-use'",
             "timeout": 10
           }
         ]
@@ -18,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./hooks/aid-hook post-tool-use",
+            "command": "sh -c 'exec \"${PLUGIN_ROOT:-$PWD}/hooks/aid-hook\" post-tool-use'",
             "timeout": 10
           }
         ]

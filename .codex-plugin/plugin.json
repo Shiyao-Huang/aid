@@ -18,7 +18,7 @@
     "claude-code"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
+  "hooks": "./hooks/codex/hooks.json",
   "interface": {
     "displayName": "AID",
     "shortDescription": "Agent identity and operation-chain awareness",
